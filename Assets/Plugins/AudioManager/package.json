@@ -1,0 +1,14 @@
+{
+  "name": "io.ambidexter.audiomanager",
+  "displayName": "Audio manager",
+  "version": "1.0.0",
+  "unity": "2019.1",
+  "description": "Audio manager",
+  "dependencies": {
+      "com.modesttree.zenject": "8.0.0",
+      "com.modesttree.zenject.signals": "8.0.0",
+      "com.neuecc.unirx": "6.2.2",
+      "com.demigiant.dotween" : "1.2.23",
+      "io.ambidexter.extensions": "https://github.com/ambidexter-unity/Extensions.git#1.0.0"
+  }
+}
