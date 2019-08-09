@@ -1,7 +1,6 @@
 {
     "name": "io.ambidexter.audiomanager",
     "references": [
-        "",
         "UniRx",
         "UniRx.Async",
         "Zenject",

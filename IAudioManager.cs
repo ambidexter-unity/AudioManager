@@ -38,10 +38,11 @@ namespace Common.Audio
         /// удаляются при превышении лимита воспроизводимых звуков).</param>
         /// <param name="loopCount">Количество воспроизведений, бесконечно, если 0.</param>
         /// <param name="language">Язык, для которого воспроизводится звук.</param>
+        /// <param name="audioSource">Источник звука, <code>null</code>, если источник не известен.</param>
         /// <returns>Возвращает Уникальный идентификатор воспроизводимого звука,
         /// или 0, если звук не воспроизведен.</returns>
         int PlaySound(string id, float muffleOthersPercent = 0, int priority = 0,
-            int loopCount = 1, SystemLanguage language = SystemLanguage.Unknown);
+            int loopCount = 1, SystemLanguage language = SystemLanguage.Unknown, AudioSource audioSource = null);
 
         /// <summary>
         /// Проверить наличие клипа для указанной локализации.

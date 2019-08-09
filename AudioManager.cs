@@ -154,6 +154,8 @@ namespace Common.Audio
 		private int _muffleSoundId;
 		private float _mufflePercent;
 
+		private readonly HashSet<AudioSource> _externalAudioSources = new HashSet<AudioSource>();
+
 #pragma warning disable 649
 		[Header("Global clips"), SerializeField]
 		private AudioLocal[] _locales = new AudioLocal[0];
@@ -271,6 +273,8 @@ namespace Common.Audio
 							Destroy(source.gameObject);
 						});
 
+					_externalAudioSources.Clear();
+
 					_sounds.Where(pair => pair.Key.AudioSource.clip == clip).Select(pair => pair.Key)
 						.ToList().ForEach(item =>
 						{
@@ -375,7 +379,7 @@ namespace Common.Audio
 		public event Action<int> OnStopSound;
 
 		public int PlaySound(string id, float muffleOthersPercent = 0, int priority = 0, int loopCount = 1,
-			SystemLanguage language = SystemLanguage.Unknown)
+			SystemLanguage language = SystemLanguage.Unknown, AudioSource audioSource = null)
 		{
 			AudioClip clip = null;
 			if (!string.IsNullOrEmpty(id))
@@ -400,7 +404,7 @@ namespace Common.Audio
 
 			var soundId = ++_currentId;
 
-			var src = CreateSoundAudioSource(clip, loopCount);
+			var src = CreateSoundAudioSource(clip, loopCount, audioSource);
 			var handler = loopCount > 0 ? ListenForEndOfClip(src, loopCount) : null;
 
 			muffleOthersPercent = Mathf.Clamp01(muffleOthersPercent);
@@ -513,17 +517,23 @@ namespace Common.Audio
 			return src;
 		}
 
-		private AudioSource CreateSoundAudioSource(AudioClip clip, int loopCount)
+		private AudioSource CreateSoundAudioSource(AudioClip clip, int loopCount, AudioSource src)
 		{
-			AudioSource src;
-			if (_sndObjectPool.Count > 0)
+			if (src != null || _sndObjectPool.Count > 0)
 			{
-				src = _sndObjectPool[0];
-				_sndObjectPool.RemoveAt(0);
+				if (src == null)
+				{
+					src = _sndObjectPool[0];
+					_sndObjectPool.RemoveAt(0);
+					src.gameObject.SetActive(true);
+				}
+				else
+				{
+					_externalAudioSources.Add(src);
+				}
 
 				src.clip = clip;
 				src.volume = SoundVolume.Value;
-				src.gameObject.SetActive(true);
 				src.mute = !SoundIsHeard;
 				src.loop = loopCount > 1;
 			}
@@ -578,8 +588,16 @@ namespace Common.Audio
 		private void StopAndReturnToPool(AudioSource src, int soundId)
 		{
 			src.Stop();
-			src.gameObject.SetActive(false);
-			_sndObjectPool.Add(src);
+			if (_externalAudioSources.Contains(src))
+			{
+				_externalAudioSources.Remove(src);
+			}
+			else
+			{
+				src.gameObject.SetActive(false);
+				_sndObjectPool.Add(src);
+			}
+
 			UpdateMuffle(soundId, 0);
 			OnStopSound?.Invoke(soundId);
 		}
