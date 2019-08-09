@@ -154,7 +154,7 @@ namespace Common.Audio
 		private int _muffleSoundId;
 		private float _mufflePercent;
 
-		private readonly HashSet<AudioSource> _externalAudioSources = new HashSet<AudioSource>();
+		private readonly Dictionary<AudioSource, int> _externalAudioSources = new Dictionary<AudioSource, int>();
 
 #pragma warning disable 649
 		[Header("Global clips"), SerializeField]
@@ -404,7 +404,7 @@ namespace Common.Audio
 
 			var soundId = ++_currentId;
 
-			var src = CreateSoundAudioSource(clip, loopCount, audioSource);
+			var src = CreateSoundAudioSource(clip, loopCount, audioSource, soundId);
 			var handler = loopCount > 0 ? ListenForEndOfClip(src, loopCount) : null;
 
 			muffleOthersPercent = Mathf.Clamp01(muffleOthersPercent);
@@ -517,7 +517,7 @@ namespace Common.Audio
 			return src;
 		}
 
-		private AudioSource CreateSoundAudioSource(AudioClip clip, int loopCount, AudioSource src)
+		private AudioSource CreateSoundAudioSource(AudioClip clip, int loopCount, AudioSource src, int id)
 		{
 			if (src != null || _sndObjectPool.Count > 0)
 			{
@@ -529,7 +529,12 @@ namespace Common.Audio
 				}
 				else
 				{
-					_externalAudioSources.Add(src);
+					if (_externalAudioSources.ContainsKey(src))
+					{
+						StopAndReturnToPool(src, _externalAudioSources[src]);
+					}
+
+					_externalAudioSources.Add(src, id);
 				}
 
 				src.clip = clip;
@@ -588,8 +593,9 @@ namespace Common.Audio
 		private void StopAndReturnToPool(AudioSource src, int soundId)
 		{
 			src.Stop();
-			if (_externalAudioSources.Contains(src))
+			if (_externalAudioSources.ContainsKey(src))
 			{
+				Assert.IsTrue(_externalAudioSources[src] == soundId);
 				_externalAudioSources.Remove(src);
 			}
 			else
