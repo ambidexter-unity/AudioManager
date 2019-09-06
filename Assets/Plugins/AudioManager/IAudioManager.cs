@@ -20,14 +20,15 @@ namespace Common.Audio
         /// <param name="clipIds">Список идентификаторов удаляемых клипов.</param>
         void UnregisterClips(IEnumerable<string> clipIds);
 
-        /// <summary>
-        /// Играть фоновую музыку.
-        /// </summary>
-        /// <param name="id">Идентификатор клипа в AudioSettings.</param>
-        /// <param name="fadeDuration">Время фейда с предыдущим треком.</param>
-        /// <param name="language">Язык, для которого воспроизводится музыка.</param>
-        /// <returns>Возвращает <code>true</code>, если музыка успешно воспроизведена.</returns>
-        bool PlayMusic(string id, float fadeDuration = 1f, SystemLanguage language = SystemLanguage.Unknown);
+		/// <summary>
+		/// Играть фоновую музыку.
+		/// </summary>
+		/// <param name="id">Идентификатор клипа в AudioSettings.</param>
+		/// <param name="fadeDuration">Время фейда с предыдущим треком.</param>
+		/// <param name="language">Язык, для которого воспроизводится музыка.</param>
+		/// <param name="restart">Следует ли перезапустить файл если он уже воспроизводится.</param>
+		/// <returns>Возвращает <code>true</code>, если музыка успешно воспроизведена.</returns>
+		bool PlayMusic(string id, float fadeDuration = 1f, SystemLanguage language = SystemLanguage.Unknown, bool restart = true);
 
         /// <summary>
         /// Играть звук.

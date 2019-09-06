@@ -140,6 +140,8 @@ namespace Common.Audio
 		private AudioSource _musicSource;
 		private AudioSource _musicOldSource;
 
+		private string _lastMusicId = string.Empty;
+
 		private bool _muteMusic;
 		private bool _muteSound;
 
@@ -255,6 +257,7 @@ namespace Common.Audio
 						DOTween.Kill(_musicSource);
 						Destroy(_musicSource.gameObject);
 						_musicSource = null;
+						_lastMusicId = string.Empty;
 						continue;
 					}
 
@@ -286,7 +289,7 @@ namespace Common.Audio
 			}
 		}
 
-		public bool PlayMusic(string id, float fadeDuration = 1, SystemLanguage language = SystemLanguage.Unknown)
+		public bool PlayMusic(string id, float fadeDuration = 1, SystemLanguage language = SystemLanguage.Unknown, bool restart = true)
 		{
 			AudioClip clip = null;
 			if (!string.IsNullOrEmpty(id))
@@ -306,7 +309,6 @@ namespace Common.Audio
 					clip = locale[id];
 				}
 			}
-
 			if (_musicSource == null)
 			{
 				Assert.IsNull(_musicOldSource);
@@ -317,6 +319,11 @@ namespace Common.Audio
 			}
 			else
 			{
+				if (!restart && _lastMusicId == id)
+				{
+					return true;
+				}
+
 				DOTween.Kill(_musicSource);
 				if (_musicOldSource != null)
 				{
@@ -336,6 +343,7 @@ namespace Common.Audio
 					{
 						Destroy(_musicSource.gameObject);
 						_musicSource = null;
+						_lastMusicId = string.Empty;
 					}
 				}
 				else
@@ -348,6 +356,7 @@ namespace Common.Audio
 					else
 					{
 						_musicSource = null;
+						_lastMusicId = string.Empty;
 					}
 				}
 			}
@@ -369,6 +378,7 @@ namespace Common.Audio
 			if (_musicSource != null)
 			{
 				_musicSource.Play();
+				_lastMusicId = id;
 			}
 
 			return true;
