@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6312403941044056317
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2224834997937407535}
+  - component: {fileID: 1241278858938143049}
+  m_Layer: 0
+  m_Name: AudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2224834997937407535
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6312403941044056317}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1241278858938143049
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6312403941044056317}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 08598e968bcd43d9a0a8d8d53645e4fa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _locales:
+  - Language: 42
+    Clips:
+    - Id: music_1
+      Clip: {fileID: 8300000, guid: e7ab14a9c61bde449a890219c3b1b2f2, type: 3}
+    - Id: music_2
+      Clip: {fileID: 8300000, guid: c485a580ed7b4bb4590d773278b70444, type: 3}
+    - Id: sound
+      Clip: {fileID: 8300000, guid: 3151aa44753d081419287bb5076f3872, type: 3}
+  - Language: 30
+    Clips:
+    - Id: phrase_1
+      Clip: {fileID: 8300000, guid: b352972530a04284788b8964d435345c, type: 3}
+    - Id: phrase_2
+      Clip: {fileID: 8300000, guid: 45f67273b37dceb40b962e127ebbf273, type: 3}
+    - Id: phrase_3
+      Clip: {fileID: 8300000, guid: 65e1cd05b9b92d345858c5744c74eb74, type: 3}
+  - Language: 10
+    Clips:
+    - Id: phrase_1
+      Clip: {fileID: 8300000, guid: ad260dd54cfcc27429a6aa41357ed8eb, type: 3}
+    - Id: phrase_2
+      Clip: {fileID: 8300000, guid: 094f189fdd32df44d948f0c3367ff65b, type: 3}
+    - Id: phrase_3
+      Clip: {fileID: 8300000, guid: f0d88c4f8fb8f9246a9bbddeec97f411, type: 3}
