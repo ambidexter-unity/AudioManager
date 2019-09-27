@@ -1,12 +1,6 @@
 {
     "name": "io.ambidexter.audiomanager",
-    "references": [
-        "UniRx",
-        "UniRx.Async",
-        "Zenject",
-        "io.ambidexter.extensions",
-        "DOTween.Modules"
-    ],
+    "references": [],
     "optionalUnityReferences": [],
     "includePlatforms": [],
     "excludePlatforms": [],

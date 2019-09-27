@@ -1,17 +1,15 @@
 #if UNITY_EDITOR
 using UnityEditor;
+using System.IO;
 #endif
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using DG.Tweening;
-using UniRx;
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
-using Zenject;
-using Extensions;
-using UniRx.Triggers;
 using UnityEngine.Assertions;
 
+// ReSharper disable once CheckNamespace
 namespace Common.Audio
 {
 	[Serializable]
@@ -82,7 +80,7 @@ namespace Common.Audio
 		// ReSharper restore InconsistentNaming
 	}
 
-	public class AudioManager : ScriptableObjectInstaller<AudioManager>, IAudioManager
+	public abstract class AudioManagerBase : MonoBehaviour, IAudioManager
 	{
 		[Serializable]
 		private struct PersistentData
@@ -124,6 +122,7 @@ namespace Common.Audio
 		//---------------------------------------//
 
 
+		private bool _isInitialized;
 		private static int _currentId;
 
 		// ReSharper disable once InconsistentNaming
@@ -132,10 +131,8 @@ namespace Common.Audio
 		private const float MuffleMinValue = 0.1f;
 		private const float MuffleMaxValue = 0.99f;
 
-		private readonly FloatReactiveProperty _musicVolume = new FloatReactiveProperty(1f);
-		private readonly FloatReactiveProperty _soundVolume = new FloatReactiveProperty(1f);
-
-		private const string AudioKey = "tamafish_audio";
+		private float _musicVolume = 1f;
+		private float _soundVolume = 1f;
 
 		private AudioSource _musicSource;
 		private AudioSource _musicOldSource;
@@ -150,22 +147,48 @@ namespace Common.Audio
 		private readonly Dictionary<SystemLanguage, Dictionary<string, AudioClip>> _registeredClips =
 			new Dictionary<SystemLanguage, Dictionary<string, AudioClip>>();
 
-		private readonly SortedDictionary<SoundItem, IDisposable> _sounds =
-			new SortedDictionary<SoundItem, IDisposable>();
+		private readonly SortedDictionary<SoundItem, Coroutine> _sounds =
+			new SortedDictionary<SoundItem, Coroutine>();
 
 		private int _muffleSoundId;
 		private float _mufflePercent;
 
 		private readonly Dictionary<AudioSource, int> _externalAudioSources = new Dictionary<AudioSource, int>();
 
+		private readonly Dictionary<AudioSource, Coroutine> _fadeRoutines = new Dictionary<AudioSource, Coroutine>();
+
 #pragma warning disable 649
 		[Header("Global clips"), SerializeField]
 		private AudioLocal[] _locales = new AudioLocal[0];
 #pragma warning restore 649
 
-		public override void InstallBindings()
+		private void Awake()
 		{
-			Container.Bind<IAudioManager>().FromInstance(this).AsSingle();
+			Init();
+		}
+
+		private void OnDestroy()
+		{
+			foreach (var coroutine in _fadeRoutines.Values)
+			{
+				StopCoroutine(coroutine);
+			}
+
+			foreach (var coroutine in _sounds.Values)
+			{
+				if (coroutine == null) continue;
+				StopCoroutine(coroutine);
+			}
+
+			_fadeRoutines.Clear();
+		}
+
+		protected abstract string AudioPersistKey { get; }
+
+		protected virtual void Init()
+		{
+			if (_isInitialized) return;
+			_isInitialized = true;
 
 			RestorePersistingState();
 			foreach (var locale in _locales)
@@ -183,8 +206,33 @@ namespace Common.Audio
 			}
 		}
 
-		public IReadOnlyReactiveProperty<float> MusicVolume => _musicVolume;
-		public IReadOnlyReactiveProperty<float> SoundVolume => _soundVolume;
+		public float MusicVolume
+		{
+			get => _musicVolume;
+			private set
+			{
+				if (value.Equals(_musicVolume)) return;
+				var oldValue = _musicVolume;
+				_musicVolume = value;
+				MusicVolumeChangedEvent?.Invoke(_musicVolume, oldValue);
+			}
+		}
+
+		public float SoundVolume
+		{
+			get => _soundVolume;
+			private set
+			{
+				if (value.Equals(_soundVolume)) return;
+				var oldValue = _soundVolume;
+				_soundVolume = value;
+				SoundVolumeChangedEvent?.Invoke(_soundVolume, oldValue);
+			}
+		}
+
+		public event VolumeChangedHandler MusicVolumeChangedEvent;
+
+		public event VolumeChangedHandler SoundVolumeChangedEvent;
 
 		private void PersistCurrentState()
 		{
@@ -192,33 +240,22 @@ namespace Common.Audio
 			{
 				_muteMusic = MuteMusic,
 				_muteSound = MuteSound,
-				_musicVolume = MusicVolume.Value,
-				_soundVolume = SoundVolume.Value
+				_musicVolume = MusicVolume,
+				_soundVolume = SoundVolume
 			});
-			PlayerPrefs.SetString(AudioKey, data);
+			PlayerPrefs.SetString(AudioPersistKey, data);
 			PlayerPrefs.Save();
 		}
 
 		private void RestorePersistingState()
 		{
-			if (!PlayerPrefs.HasKey(AudioKey)) return;
-			var data = JsonUtility.FromJson<PersistentData>(PlayerPrefs.GetString(AudioKey));
-			_musicVolume.SetValueAndForceNotify(data._musicVolume);
-			_soundVolume.SetValueAndForceNotify(data._soundVolume);
-			_muteMusic = data._muteMusic;
-			_muteSound = data._muteSound;
+			if (!PlayerPrefs.HasKey(AudioPersistKey)) return;
+			var data = JsonUtility.FromJson<PersistentData>(PlayerPrefs.GetString(AudioPersistKey));
+			MusicVolume = data._musicVolume;
+			SoundVolume = data._soundVolume;
+			MuteMusic = data._muteMusic;
+			MuteSound = data._muteSound;
 		}
-
-#if UNITY_EDITOR
-		private const string ManagerPath = "Assets/Scripts/Common/Manager";
-
-		[MenuItem("Tools/Game Settings/Audio Manager Settings")]
-		private static void GetAndSelectSettingsInstance()
-		{
-			EditorUtility.FocusProjectWindow();
-			Selection.activeObject = InspectorExtensions.FindOrCreateNewScriptableObject<AudioManager>(ManagerPath);
-		}
-#endif
 
 		// IAudioManager
 
@@ -254,7 +291,7 @@ namespace Common.Audio
 
 					if (_musicSource != null && _musicSource.clip == clip)
 					{
-						DOTween.Kill(_musicSource);
+						KillFadeCoroutine(_musicSource);
 						Destroy(_musicSource.gameObject);
 						_musicSource = null;
 						_lastMusicId = string.Empty;
@@ -263,7 +300,7 @@ namespace Common.Audio
 
 					if (_musicOldSource != null && _musicOldSource.clip == clip)
 					{
-						DOTween.Kill(_musicOldSource);
+						KillFadeCoroutine(_musicOldSource);
 						Destroy(_musicOldSource.gameObject);
 						_musicOldSource = null;
 						continue;
@@ -281,7 +318,12 @@ namespace Common.Audio
 					_sounds.Where(pair => pair.Key.AudioSource.clip == clip).Select(pair => pair.Key)
 						.ToList().ForEach(item =>
 						{
-							_sounds[item].Dispose();
+							var coroutine = _sounds[item];
+							if (coroutine != null)
+							{
+								StopCoroutine(coroutine);
+							}
+
 							_sounds.Remove(item);
 							Destroy(item.AudioSource.gameObject);
 						});
@@ -289,7 +331,8 @@ namespace Common.Audio
 			}
 		}
 
-		public bool PlayMusic(string id, float fadeDuration = 1, SystemLanguage language = SystemLanguage.Unknown, bool restart = true)
+		public bool PlayMusic(string id, float fadeDuration = 1, SystemLanguage language = SystemLanguage.Unknown,
+			bool restart = true)
 		{
 			AudioClip clip = null;
 			if (!string.IsNullOrEmpty(id))
@@ -309,12 +352,13 @@ namespace Common.Audio
 					clip = locale[id];
 				}
 			}
+
 			if (_musicSource == null)
 			{
 				Assert.IsNull(_musicOldSource);
 				if (clip != null)
 				{
-					_musicSource = CreateMusicAudioSource(clip, MusicVolume.Value);
+					_musicSource = CreateMusicAudioSource(clip, MusicVolume);
 				}
 			}
 			else
@@ -324,10 +368,10 @@ namespace Common.Audio
 					return true;
 				}
 
-				DOTween.Kill(_musicSource);
+				KillFadeCoroutine(_musicSource);
 				if (_musicOldSource != null)
 				{
-					DOTween.Kill(_musicOldSource);
+					KillFadeCoroutine(_musicOldSource);
 					Destroy(_musicOldSource.gameObject);
 					_musicOldSource = null;
 				}
@@ -365,10 +409,10 @@ namespace Common.Audio
 			{
 				if (_musicSource != null)
 				{
-					_musicSource.DOFade(_musicVolume.Value, fadeDuration).SetEase(Ease.Linear);
+					StartFadeCoroutine(_musicSource, MusicVolume, fadeDuration);
 				}
 
-				_musicOldSource.DOFade(0, fadeDuration).SetEase(Ease.Linear).OnComplete(() =>
+				StartFadeCoroutine(_musicOldSource, 0, fadeDuration, () =>
 				{
 					Destroy(_musicOldSource.gameObject);
 					_musicOldSource = null;
@@ -384,9 +428,48 @@ namespace Common.Audio
 			return true;
 		}
 
-		public event Action<int> OnPlaySound;
+		private IEnumerator FadeRoutine(AudioSource source, float destValue, float duration, Action callback)
+		{
+			var startVolume = source.volume;
+			var delta = destValue - startVolume;
+			var timesLeft = 0f;
+			while (timesLeft < duration)
+			{
+				yield return null;
+				timesLeft += Time.unscaledDeltaTime;
+				var inc = Mathf.Clamp01(timesLeft / duration) * delta;
+				source.volume = startVolume + inc;
+			}
 
-		public event Action<int> OnStopSound;
+			source.volume = destValue;
+			var r = _fadeRoutines.Remove(source);
+			Assert.IsTrue(r, "AudioSource must be added to _fadeRoutines dictinary after the coroutine statrs.");
+			callback?.Invoke();
+		}
+
+		private void KillFadeCoroutine(AudioSource source)
+		{
+			if (!_fadeRoutines.TryGetValue(source, out var coroutine)) return;
+			StopCoroutine(coroutine);
+			_fadeRoutines.Remove(source);
+		}
+
+		private void StartFadeCoroutine(AudioSource source, float destValue, float duration, Action callback = null)
+		{
+			if (_fadeRoutines.TryGetValue(source, out var coroutine))
+			{
+				// ReSharper disable once Unity.NoNullPropogation
+				Debug.LogErrorFormat("Fade coroutine for AudioSource with clip {0} already started.",
+					source.clip?.name ?? "???");
+				StopCoroutine(coroutine);
+			}
+
+			_fadeRoutines[source] = StartCoroutine(FadeRoutine(source, destValue, duration, callback));
+		}
+
+		public event SoundStateChangedHandler PlaySoundEvent;
+
+		public event SoundStateChangedHandler StopSoundEvent;
 
 		public int PlaySound(string id, float muffleOthersPercent = 0, int priority = 0, int loopCount = 1,
 			SystemLanguage language = SystemLanguage.Unknown, AudioSource audioSource = null)
@@ -415,16 +498,20 @@ namespace Common.Audio
 			var soundId = ++_currentId;
 
 			var src = CreateSoundAudioSource(clip, loopCount, audioSource, soundId);
-			var handler = loopCount > 0 ? ListenForEndOfClip(src, loopCount) : null;
+			var coroutine = loopCount > 0 ? StartCoroutine(ListenForEndOfClipRoutine(src, loopCount)) : null;
 
 			muffleOthersPercent = Mathf.Clamp01(muffleOthersPercent);
 			var soundItem = new SoundItem(src, soundId, priority, muffleOthersPercent >= MuffleMaxValue);
-			_sounds.Add(soundItem, handler);
+			_sounds.Add(soundItem, coroutine);
 
 			while (_sounds.Count > SoundsLimit)
 			{
 				var item = _sounds.First();
-				item.Value?.Dispose();
+				if (item.Value != null)
+				{
+					StopCoroutine(item.Value);
+				}
+
 				StopAndReturnToPool(item.Key.AudioSource, item.Key.SoundId);
 				_sounds.Remove(item.Key);
 			}
@@ -434,7 +521,7 @@ namespace Common.Audio
 			UpdateMuffle(soundId, muffleOthersPercent);
 			UpdateMuting();
 
-			OnPlaySound?.Invoke(soundId);
+			PlaySoundEvent?.Invoke(soundId);
 			return soundId;
 		}
 
@@ -443,7 +530,11 @@ namespace Common.Audio
 			var item = _sounds.FirstOrDefault(pair => pair.Key.SoundId == soundId);
 			if (item.Key == null) return;
 
-			item.Value?.Dispose();
+			if (item.Value != null)
+			{
+				StopCoroutine(item.Value);
+			}
+
 			StopAndReturnToPool(item.Key.AudioSource, item.Key.SoundId);
 			_sounds.Remove(item.Key);
 			UpdateMuting();
@@ -458,9 +549,9 @@ namespace Common.Audio
 				_musicSource.volume = value * k;
 			}
 
-			if (Math.Abs(value - MusicVolume.Value) >= 0.01f)
+			if (Math.Abs(value - MusicVolume) >= 0.01f)
 			{
-				_musicVolume.SetValueAndForceNotify(value);
+				MusicVolume = value;
 				PersistCurrentState();
 			}
 		}
@@ -474,36 +565,42 @@ namespace Common.Audio
 				soundItem.AudioSource.volume = soundItem.SoundId == _muffleSoundId ? value : value * k;
 			}
 
-			if (Math.Abs(value - SoundVolume.Value) >= 0.01f)
+			if (Math.Abs(value - SoundVolume) >= 0.01f)
 			{
-				_soundVolume.SetValueAndForceNotify(value);
+				SoundVolume = value;
 				PersistCurrentState();
 			}
 		}
 
 		public bool MuteMusic
 		{
+			get => _muteMusic;
 			set
 			{
 				if (_muteMusic == value) return;
 				_muteMusic = value;
 				UpdateMuting();
 				PersistCurrentState();
+				MuteMusicChangedEvent?.Invoke(_muteMusic);
 			}
-			get => _muteMusic;
 		}
 
 		public bool MuteSound
 		{
+			get => _muteSound;
 			set
 			{
 				if (_muteSound == value) return;
 				_muteSound = value;
 				UpdateMuting();
 				PersistCurrentState();
+				MuteSoundChangedEvent?.Invoke(_muteSound);
 			}
-			get => _muteSound;
 		}
+
+		public event MuteChangedHandler MuteMusicChangedEvent;
+
+		public event MuteChangedHandler MuteSoundChangedEvent;
 
 		public bool HasClip(string id, SystemLanguage? language = null)
 		{
@@ -516,15 +613,17 @@ namespace Common.Audio
 
 		private AudioSource CreateMusicAudioSource(AudioClip clip, float volume)
 		{
-			var src = Container.InstantiateComponentOnNewGameObject<SoundSourceController>("MusicSource").AudioSource;
+			var src = new GameObject("MusicSource", typeof(SoundSourceController))
+				.GetComponent<SoundSourceController>();
+			DontDestroyOnLoad(src.gameObject);
 
-			src.clip = clip;
-			src.volume = volume;
-			src.ignoreListenerVolume = true;
-			src.loop = true;
-			src.mute = !MusicIsHeard;
+			src.AudioSource.clip = clip;
+			src.AudioSource.volume = volume;
+			src.AudioSource.ignoreListenerVolume = true;
+			src.AudioSource.loop = true;
+			src.AudioSource.mute = !MusicIsHeard;
 
-			return src;
+			return src.AudioSource;
 		}
 
 		private AudioSource CreateSoundAudioSource(AudioClip clip, int loopCount, AudioSource src, int id)
@@ -548,34 +647,40 @@ namespace Common.Audio
 				}
 
 				src.clip = clip;
-				src.volume = SoundVolume.Value;
+				src.volume = SoundVolume;
 				src.mute = !SoundIsHeard;
 				src.loop = loopCount > 1;
 			}
 			else
 			{
-				var container = Container.AncestorContainers.FirstOrDefault() ?? Container;
-				src = container.InstantiateComponentOnNewGameObject<SoundSourceController>("SoundSource").AudioSource;
+				var srcCtrl = new GameObject("SoundSource", typeof(SoundSourceController))
+					.GetComponent<SoundSourceController>();
+				src = srcCtrl.AudioSource;
 
 				src.clip = clip;
-				src.volume = SoundVolume.Value;
+				src.volume = SoundVolume;
 				src.ignoreListenerVolume = true;
 				src.mute = !SoundIsHeard;
 				src.loop = loopCount > 1;
 
-				IDisposable d = null;
-				d = src.OnDestroyAsObservable().Subscribe(unit =>
+				srcCtrl.DestroyEvent.AddListener(() =>
 				{
-					// ReSharper disable once AccessToModifiedClosure
-					d?.Dispose();
 					if (!_sndObjectPool.Remove(src))
 					{
 						var soundItem = _sounds.FirstOrDefault(pair => pair.Key.AudioSource == src).Key;
 						if (soundItem != null)
 						{
-							_sounds[soundItem].Dispose();
+							var coroutine = _sounds[soundItem];
+							if (coroutine != null)
+							{
+								StopCoroutine(coroutine);
+							}
+
+							UpdateMuffle(soundItem.SoundId, 0);
 							_sounds.Remove(soundItem);
 						}
+
+						_fadeRoutines.Remove(src);
 					}
 				});
 			}
@@ -583,21 +688,14 @@ namespace Common.Audio
 			return src;
 		}
 
-		private IDisposable ListenForEndOfClip(AudioSource src, int loopCount)
+		private IEnumerator ListenForEndOfClipRoutine(AudioSource src, int loopCount)
 		{
-			IDisposable d = null;
-			d = Observable.Timer(TimeSpan.FromSeconds(src.clip.length * loopCount), Scheduler.MainThreadIgnoreTimeScale)
-				.Subscribe(l =>
-				{
-					// ReSharper disable once AccessToModifiedClosure
-					d?.Dispose();
-					var item = _sounds.First(pair => pair.Key.AudioSource == src);
-					StopAndReturnToPool(item.Key.AudioSource, item.Key.SoundId);
-					_sounds.Remove(item.Key);
-					UpdateMuting();
-				});
+			yield return new WaitForSeconds(src.clip.length * loopCount);
 
-			return d;
+			var item = _sounds.First(pair => pair.Key.AudioSource == src);
+			StopAndReturnToPool(item.Key.AudioSource, item.Key.SoundId);
+			_sounds.Remove(item.Key);
+			UpdateMuting();
 		}
 
 		private void StopAndReturnToPool(AudioSource src, int soundId)
@@ -615,25 +713,25 @@ namespace Common.Audio
 			}
 
 			UpdateMuffle(soundId, 0);
-			OnStopSound?.Invoke(soundId);
+			StopSoundEvent?.Invoke(soundId);
 		}
 
-		private bool MusicIsHeard => !_muteMusic && _sounds.Count(pair => pair.Key.Exclusive) <= 0;
+		private bool MusicIsHeard => !MuteMusic && _sounds.Count(pair => pair.Key.Exclusive) <= 0;
 
-		private bool SoundIsHeard => !_muteSound && _sounds.Count(pair => pair.Key.Exclusive) <= 0;
+		private bool SoundIsHeard => !MuteSound && _sounds.Count(pair => pair.Key.Exclusive) <= 0;
 
 		private void UpdateMuting()
 		{
-			if (_musicSource != null)
+			if (_musicSource)
 			{
 				var musicIsMuting = !MusicIsHeard;
 				_musicSource.mute = musicIsMuting;
-				if (musicIsMuting && _musicOldSource != null)
+				if (musicIsMuting && _musicOldSource)
 				{
-					DOTween.Kill(_musicSource);
-					_musicSource.volume = MusicVolume.Value;
+					KillFadeCoroutine(_musicSource);
+					_musicSource.volume = MusicVolume;
 
-					DOTween.Kill(_musicOldSource);
+					KillFadeCoroutine(_musicOldSource);
 					Destroy(_musicOldSource.gameObject);
 					_musicOldSource = null;
 				}
@@ -646,7 +744,7 @@ namespace Common.Audio
 			}
 
 			var item = _sounds.LastOrDefault(pair => pair.Key.Exclusive);
-			if (!_muteSound && item.Key != null)
+			if (!MuteSound && item.Key != null)
 			{
 				item.Key.AudioSource.mute = false;
 			}
@@ -677,8 +775,37 @@ namespace Common.Audio
 				_mufflePercent = mufflePercent;
 			}
 
-			SetSoundVolume(SoundVolume.Value);
-			SetMusicVolume(MusicVolume.Value);
+			SetSoundVolume(SoundVolume);
+			SetMusicVolume(MusicVolume);
 		}
+
+#if UNITY_EDITOR
+		[MenuItem("Tools/Game Settings/Audio Manager")]
+		private static void FindAndSelectWindowManager()
+		{
+			var instance = Resources.FindObjectsOfTypeAll<AudioManagerBase>().FirstOrDefault();
+			if (!instance)
+			{
+				LoadAllPrefabs();
+				instance = Resources.FindObjectsOfTypeAll<AudioManagerBase>().FirstOrDefault();
+			}
+
+			if (instance)
+			{
+				Selection.activeObject = instance;
+				return;
+			}
+
+			Debug.LogError("Can't find prefab of AudioManager.");
+		}
+
+		private static void LoadAllPrefabs()
+		{
+			Directory.GetDirectories(Application.dataPath, @"Resources", SearchOption.AllDirectories)
+				.Select(s => Directory.GetFiles(s, @"*.prefab", SearchOption.TopDirectoryOnly))
+				.SelectMany(strings => strings.Select(Path.GetFileNameWithoutExtension))
+				.Distinct().ToList().ForEach(s => Resources.LoadAll(s));
+		}
+#endif
 	}
 }
