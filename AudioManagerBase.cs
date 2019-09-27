@@ -125,9 +125,6 @@ namespace Common.Audio
 		private bool _isInitialized;
 		private static int _currentId;
 
-		// ReSharper disable once InconsistentNaming
-		private const int SoundsLimit = 8;
-
 		private const float MuffleMinValue = 0.1f;
 		private const float MuffleMaxValue = 0.99f;
 
@@ -142,7 +139,7 @@ namespace Common.Audio
 		private bool _muteMusic;
 		private bool _muteSound;
 
-		private readonly List<AudioSource> _sndObjectPool = new List<AudioSource>(SoundsLimit);
+		private readonly List<AudioSource> _sndObjectPool;
 
 		private readonly Dictionary<SystemLanguage, Dictionary<string, AudioClip>> _registeredClips =
 			new Dictionary<SystemLanguage, Dictionary<string, AudioClip>>();
@@ -161,6 +158,14 @@ namespace Common.Audio
 		[Header("Global clips"), SerializeField]
 		private AudioLocal[] _locales = new AudioLocal[0];
 #pragma warning restore 649
+
+		protected abstract int SoundsLimit { get; }
+
+		protected AudioManagerBase()
+		{
+			// ReSharper disable once VirtualMemberCallInConstructor
+			_sndObjectPool = new List<AudioSource>(SoundsLimit);
+		}
 
 		private void Awake()
 		{
