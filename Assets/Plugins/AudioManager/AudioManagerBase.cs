@@ -654,7 +654,7 @@ namespace Common.Audio
 				src.clip = clip;
 				src.volume = SoundVolume;
 				src.mute = !SoundIsHeard;
-				src.loop = loopCount > 1;
+				src.loop = loopCount != 1;
 			}
 			else
 			{
