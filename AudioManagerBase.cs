@@ -176,6 +176,7 @@ namespace Common.Audio
 		{
 			foreach (var coroutine in _fadeRoutines.Values)
 			{
+				if (coroutine == null) continue;
 				StopCoroutine(coroutine);
 			}
 
@@ -185,6 +186,7 @@ namespace Common.Audio
 				StopCoroutine(coroutine);
 			}
 
+			_sounds.Clear();
 			_fadeRoutines.Clear();
 		}
 
